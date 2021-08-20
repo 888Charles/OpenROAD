@@ -55,16 +55,6 @@ static frSquaredDistance pt2ptDistSquare(const frPoint& pt1, const frPoint& pt2)
   return (frSquaredDistance) dx * dx + (frSquaredDistance) dy * dy;
 }
 
-static frSquaredDistance box2boxDistSquare(const frBox& box1,
-                                           const frBox& box2,
-                                           frCoord& dx,
-                                           frCoord& dy)
-{
-  dx = max(max(box1.left(), box2.left()) - min(box1.right(), box2.right()), 0);
-  dy = max(max(box1.bottom(), box2.bottom()) - min(box1.top(), box2.top()), 0);
-  return (frSquaredDistance) dx * dx + (frSquaredDistance) dy * dy;
-}
-
 // prlx = -dx, prly = -dy
 // dx > 0 : disjoint in x; dx = 0 : touching in x; dx < 0 : overlap in x
 static frSquaredDistance box2boxDistSquareNew(const frBox& box1,
@@ -378,265 +368,6 @@ void FlexDRWorker::modCornerToCornerSpacing(const frBox& box,
   // cout <<"planer mod " <<cnt <<" edges" <<endl;
 }
 
-void FlexDRWorker::modMinSpacingCost(drNet* net,
-                                     const frBox& box,
-                                     frMIdx z,
-                                     int type,
-                                     bool isCurrPs)
-{
-  auto lNum = gridGraph_.getLayerNum(z);
-  frCoord width1 = box.width();
-  frCoord length1 = box.length();
-  // layer default width
-  frCoord width2planar = getTech()->getLayer(lNum)->getWidth();
-  frCoord halfwidth2planar = width2planar / 2;
-  frViaDef* viaDefL = (lNum > getTech()->getBottomLayerNum())
-                          ? getTech()->getLayer(lNum - 1)->getDefaultViaDef()
-                          : nullptr;
-  frVia viaL(viaDefL);
-  frBox viaBoxL(0, 0, 0, 0);
-  if (viaDefL) {
-    viaL.getLayer2BBox(viaBoxL);
-  }
-  frCoord width2viaL = viaBoxL.width();
-  frCoord length2viaL = viaBoxL.length();
-  // obj2 viaU = other obj
-  frViaDef* viaDefU = (lNum < getTech()->getTopLayerNum())
-                          ? getTech()->getLayer(lNum + 1)->getDefaultViaDef()
-                          : nullptr;
-  frVia viaU(viaDefU);
-  frBox viaBoxU(0, 0, 0, 0);
-  if (viaDefU) {
-    viaU.getLayer1BBox(viaBoxU);
-  }
-  frCoord width2viaU = viaBoxU.width();
-  frCoord length2viaU = viaBoxU.length();
-
-  // spacing value needed
-  frCoord bloatDistPlanar = 0;
-  frCoord bloatDistViaL = 0;
-  frCoord bloatDistViaU = 0;
-  auto con = getTech()->getLayer(lNum)->getMinSpacing();
-  if (con) {
-    if (con->typeId() == frConstraintTypeEnum::frcSpacingConstraint) {
-      bloatDistPlanar = static_cast<frSpacingConstraint*>(con)->getMinSpacing();
-      bloatDistViaL = static_cast<frSpacingConstraint*>(con)->getMinSpacing();
-      bloatDistViaU = static_cast<frSpacingConstraint*>(con)->getMinSpacing();
-    } else if (con->typeId()
-               == frConstraintTypeEnum::frcSpacingTablePrlConstraint) {
-      bloatDistPlanar = static_cast<frSpacingTablePrlConstraint*>(con)->find(
-          max(width1, width2planar), length1);
-      bloatDistViaL = static_cast<frSpacingTablePrlConstraint*>(con)->find(
-          max(width1, width2viaL),
-          isCurrPs ? length2viaL : min(length1, length2viaL));
-      bloatDistViaU = static_cast<frSpacingTablePrlConstraint*>(con)->find(
-          max(width1, width2viaU),
-          isCurrPs ? length2viaU : min(length1, length2viaU));
-    } else if (con->typeId()
-               == frConstraintTypeEnum::frcSpacingTableTwConstraint) {
-      bloatDistPlanar = static_cast<frSpacingTableTwConstraint*>(con)->find(
-          width1, width2planar, length1);
-      bloatDistViaL = static_cast<frSpacingTableTwConstraint*>(con)->find(
-          width1,
-          width2viaL,
-          isCurrPs ? length2viaL : min(length1, length2viaL));
-      bloatDistViaU = static_cast<frSpacingTableTwConstraint*>(con)->find(
-          width1,
-          width2viaU,
-          isCurrPs ? length2viaU : min(length1, length2viaU));
-    } else {
-      cout << "Warning: min spacing rule not supporterd" << endl;
-      return;
-    }
-  } else {
-    cout << "Warning: no min spacing rule" << endl;
-    return;
-  }
-
-  // other obj eol spc to curr obj
-  // no need to bloat eolWithin because eolWithin always < minSpacing
-  frCoord bloatDistEolX = 0;
-  frCoord bloatDistEolY = 0;
-  for (auto con : getTech()->getLayer(lNum)->getEolSpacing()) {
-    auto eolSpace = con->getMinSpacing();
-    auto eolWidth = con->getEolWidth();
-    // eol up and down
-    if (viaDefL && viaBoxL.right() - viaBoxL.left() < eolWidth) {
-      bloatDistEolY = max(bloatDistEolY, eolSpace);
-    }
-    if (viaDefU && viaBoxU.right() - viaBoxU.left() < eolWidth) {
-      bloatDistEolY = max(bloatDistEolY, eolSpace);
-    }
-    // eol left and right
-    if (viaDefL && viaBoxL.top() - viaBoxL.bottom() < eolWidth) {
-      bloatDistEolX = max(bloatDistEolX, eolSpace);
-    }
-    if (viaDefU && viaBoxU.top() - viaBoxU.bottom() < eolWidth) {
-      bloatDistEolX = max(bloatDistEolX, eolSpace);
-    }
-  }
-
-  frCoord bloatDist = max(max(bloatDistPlanar, bloatDistViaL), bloatDistViaU);
-
-  FlexMazeIdx mIdx1;
-  FlexMazeIdx mIdx2;
-  // assumes width always > 2
-  frBox bx(
-      box.left() - max(bloatDist, bloatDistEolX)
-          - max(max(halfwidth2planar, viaBoxL.right()), viaBoxU.right()) + 1,
-      box.bottom() - max(bloatDist, bloatDistEolY)
-          - max(max(halfwidth2planar, viaBoxL.top()), viaBoxU.top()) + 1,
-      box.right() + max(bloatDist, bloatDistEolX)
-          + max(max(halfwidth2planar, viaBoxL.left()), viaBoxU.left()) - 1,
-      box.top() + max(bloatDist, bloatDistEolY)
-          + max(max(halfwidth2planar, viaBoxL.bottom()), viaBoxU.bottom()) - 1);
-  gridGraph_.getIdxBox(mIdx1, mIdx2, bx);
-  // if (!isInitDR()) {
-  //   cout <<" box " <<box <<" bloatDist " <<bloatDist <<" bx " <<bx <<endl;
-  //   cout <<" midx1/2 (" <<mIdx1.x() <<", " <<mIdx1.y() <<") ("
-  //                       <<mIdx2.x() <<", " <<mIdx2.y() <<") (" <<endl;
-  // }
-
-  frPoint pt;
-  frBox tmpBx;
-  frCoord dx, dy, prl;
-  frTransform xform;
-  frCoord reqDist = 0;
-  frSquaredDistance distSquare = 0;
-  int cnt = 0;
-  for (int i = mIdx1.x(); i <= mIdx2.x(); i++) {
-    for (int j = mIdx1.y(); j <= mIdx2.y(); j++) {
-      gridGraph_.getPoint(pt, i, j);
-      xform.set(pt);
-      // planar
-      tmpBx.set(pt.x() - halfwidth2planar,
-                pt.y() - halfwidth2planar,
-                pt.x() + halfwidth2planar,
-                pt.y() + halfwidth2planar);
-      distSquare = box2boxDistSquare(box, tmpBx, dx, dy);
-      prl = max(dx, dy);
-      if (con->typeId() == frConstraintTypeEnum::frcSpacingConstraint) {
-        reqDist = static_cast<frSpacingConstraint*>(con)->getMinSpacing();
-      } else if (con->typeId()
-                 == frConstraintTypeEnum::frcSpacingTablePrlConstraint) {
-        reqDist = static_cast<frSpacingTablePrlConstraint*>(con)->find(
-            max(width1, width2planar), prl > 0 ? length1 : 0);
-      } else if (con->typeId()
-                 == frConstraintTypeEnum::frcSpacingTableTwConstraint) {
-        reqDist = static_cast<frSpacingTableTwConstraint*>(con)->find(
-            width1, width2planar, prl > 0 ? length1 : 0);
-      }
-      if (distSquare < (frSquaredDistance) reqDist * reqDist) {
-        switch (type) {
-          case 0:
-            gridGraph_.subRouteShapeCostPlanar(i, j, z);  // safe access
-            break;
-          case 1:
-            gridGraph_.addRouteShapeCostPlanar(i, j, z);  // safe access
-            break;
-          case 2:
-            gridGraph_.subFixedShapeCostPlanar(i, j, z);
-            break;
-          case 3:
-            gridGraph_.addFixedShapeCostPlanar(i, j, z);
-            break;
-          default:;
-        }
-        cnt++;
-      }
-      // viaL
-      if (viaDefL) {
-        tmpBx.set(viaBoxL);
-        tmpBx.transform(xform);
-        distSquare = box2boxDistSquare(box, tmpBx, dx, dy);
-        prl = max(dx, dy);
-        // curr is ps
-        if (isCurrPs) {
-          if (dx == 0 && dy > 0) {
-            prl = viaBoxL.right() - viaBoxL.left();
-          } else if (dx > 0 && dy == 0) {
-            prl = viaBoxL.top() - viaBoxL.bottom();
-          }
-        }
-        if (con->typeId() == frConstraintTypeEnum::frcSpacingConstraint) {
-          reqDist = static_cast<frSpacingConstraint*>(con)->getMinSpacing();
-        } else if (con->typeId()
-                   == frConstraintTypeEnum::frcSpacingTablePrlConstraint) {
-          reqDist = static_cast<frSpacingTablePrlConstraint*>(con)->find(
-              max(width1, width2viaL), prl);
-        } else if (con->typeId()
-                   == frConstraintTypeEnum::frcSpacingTableTwConstraint) {
-          reqDist = static_cast<frSpacingTableTwConstraint*>(con)->find(
-              width1, width2viaL, prl);
-        }
-        if (distSquare < reqDist * reqDist) {
-          switch (type) {
-            case 0:
-              gridGraph_.subRouteShapeCostVia(i, j, z - 1);
-              break;
-            case 1:
-              gridGraph_.addRouteShapeCostVia(i, j, z - 1);
-              break;
-            case 2:
-              gridGraph_.subFixedShapeCostVia(i, j, z - 1);
-              break;
-            case 3:
-              gridGraph_.addFixedShapeCostVia(i, j, z - 1);
-              break;
-            default:;
-          }
-        } else {
-          modMinSpacingCostVia_eol(box, tmpBx, type, false, i, j, z);
-        }
-      }
-      if (viaDefU) {
-        tmpBx.set(viaBoxU);
-        tmpBx.transform(xform);
-        distSquare = box2boxDistSquare(box, tmpBx, dx, dy);
-        prl = max(dx, dy);
-        // curr is ps
-        if (isCurrPs) {
-          if (dx == 0 && dy > 0) {
-            prl = viaBoxU.right() - viaBoxU.left();
-          } else if (dx > 0 && dy == 0) {
-            prl = viaBoxU.top() - viaBoxU.bottom();
-          }
-        }
-        if (con->typeId() == frConstraintTypeEnum::frcSpacingConstraint) {
-          reqDist = static_cast<frSpacingConstraint*>(con)->getMinSpacing();
-        } else if (con->typeId()
-                   == frConstraintTypeEnum::frcSpacingTablePrlConstraint) {
-          reqDist = static_cast<frSpacingTablePrlConstraint*>(con)->find(
-              max(width1, width2viaU), prl);
-        } else if (con->typeId()
-                   == frConstraintTypeEnum::frcSpacingTableTwConstraint) {
-          reqDist = static_cast<frSpacingTableTwConstraint*>(con)->find(
-              width1, width2viaU, prl);
-        }
-        if (distSquare < (frSquaredDistance) reqDist * reqDist) {
-          switch (type) {
-            case 0:
-              gridGraph_.subRouteShapeCostVia(i, j, z);
-              break;
-            case 1:
-              gridGraph_.addRouteShapeCostVia(i, j, z);
-              break;
-            case 2:
-              gridGraph_.subFixedShapeCostVia(i, j, z);  // safe access
-              break;
-            case 3:
-              gridGraph_.addFixedShapeCostVia(i, j, z);  // safe access
-              break;
-            default:;
-          }
-        } else {
-          modMinSpacingCostVia_eol(box, tmpBx, type, true, i, j, z);
-        }
-      }
-    }
-  }
-  // cout <<"planer mod " <<cnt <<" edges" <<endl;
-}
 
 void FlexDRWorker::modMinSpacingCostVia_eol_helper(const frBox& box,
                                                    const frBox& testBox,
@@ -732,6 +463,45 @@ void FlexDRWorker::modMinSpacingCostVia_eol(const frBox& box,
       }
     }
   }
+  for (auto eolCon : getTech()->getLayer(lNum)->getLef58SpacingEndOfLineConstraints()) {
+      auto eolSpace = eolCon->getEolSpace();
+      auto eolWidth = eolCon->getEolWidth();
+      frCoord eolWithin = 0;
+      if(eolCon->hasWithinConstraint())
+        eolWithin = eolCon->getWithinConstraint()->getEolWithin();
+      // eol to up and down
+      if (tmpBx.right() - tmpBx.left() < eolWidth) {
+        testBox.set(tmpBx.left() - eolWithin,
+                    tmpBx.top(),
+                    tmpBx.right() + eolWithin,
+                    tmpBx.top() + eolSpace);
+        modMinSpacingCostVia_eol_helper(
+            box, testBox, type, isUpperVia, i, j, z);
+
+        testBox.set(tmpBx.left() - eolWithin,
+                    tmpBx.bottom() - eolSpace,
+                    tmpBx.right() + eolWithin,
+                    tmpBx.bottom());
+        modMinSpacingCostVia_eol_helper(
+            box, testBox, type, isUpperVia, i, j, z);
+      }
+      // eol to left and right
+      if (tmpBx.top() - tmpBx.bottom() < eolWidth) {
+        testBox.set(tmpBx.right(),
+                    tmpBx.bottom() - eolWithin,
+                    tmpBx.right() + eolSpace,
+                    tmpBx.top() + eolWithin);
+        modMinSpacingCostVia_eol_helper(
+            box, testBox, type, isUpperVia, i, j, z);
+
+        testBox.set(tmpBx.left() - eolSpace,
+                    tmpBx.bottom() - eolWithin,
+                    tmpBx.left(),
+                    tmpBx.top() + eolWithin);
+        modMinSpacingCostVia_eol_helper(
+            box, testBox, type, isUpperVia, i, j, z);
+      }
+    }
 }
 
 void FlexDRWorker::modMinimumcutCostVia(const frBox& box,
@@ -966,6 +736,18 @@ void FlexDRWorker::modMinSpacingCostVia(const frBox& box,
   frCoord bloatDistEolY = 0;
   for (auto con : getTech()->getLayer(lNum)->getEolSpacing()) {
     auto eolSpace = con->getMinSpacing();
+    auto eolWidth = con->getEolWidth();
+    // eol up and down
+    if (viaBox.right() - viaBox.left() < eolWidth) {
+      bloatDistEolY = max(bloatDistEolY, eolSpace);
+    }
+    // eol left and right
+    if (viaBox.top() - viaBox.bottom() < eolWidth) {
+      bloatDistEolX = max(bloatDistEolX, eolSpace);
+    }
+  }
+  for (auto con : getTech()->getLayer(lNum)->getLef58SpacingEndOfLineConstraints()) {
+    auto eolSpace = con->getEolSpace();
     auto eolWidth = con->getEolWidth();
     // eol up and down
     if (viaBox.right() - viaBox.left() < eolWidth) {
@@ -1404,30 +1186,153 @@ void FlexDRWorker::modAdjCutSpacingCost_fixedObj(const frDesign* design,
   }
 }
 
+bool checkLef58CutSpacingViol(const frBox& box1,
+                              const frBox& box2,
+                              frString cutClass1,
+                              frString cutClass2,
+                              frCoord prl,
+                              frSquaredDistance distSquare,
+                              frSquaredDistance c2cSquare,
+                              bool isCurrDirY,
+                              odb::dbTechLayerCutSpacingTableDefRule* dbRule)
+{
+  frSquaredDistance currDistSquare, reqDistSquare;
+  bool isSide1, isSide2;
+  if (isCurrDirY) {
+    isSide1 = (box1.right() - box1.left()) > (box1.top() - box1.bottom());
+    isSide2 = (box2.right() - box2.left()) > (box2.top() - box2.bottom());
+  } else {
+    isSide1 = (box1.right() - box1.left()) < (box1.top() - box1.bottom());
+    isSide2 = (box2.right() - box2.left()) < (box2.top() - box2.bottom());
+  }
+  auto reqPrl = dbRule->getPrlEntry(cutClass1, cutClass2);
+  if (dbRule->isCenterAndEdge(cutClass1, cutClass2) && dbRule->isNoPrl()) {
+    reqDistSquare
+        = dbRule->getSpacing(cutClass1,
+                             isSide1,
+                             cutClass2,
+                             isSide2,
+                             odb::dbTechLayerCutSpacingTableDefRule::MAX);
+    reqDistSquare *= reqDistSquare;
+    if (c2cSquare < reqDistSquare)
+      return true;
+
+    reqDistSquare
+        = dbRule->getSpacing(cutClass1,
+                             isSide1,
+                             cutClass2,
+                             isSide2,
+                             odb::dbTechLayerCutSpacingTableDefRule::MIN);
+    reqDistSquare *= reqDistSquare;
+    if (distSquare < reqDistSquare)
+      return true;
+    return false;
+  }
+  if (cutClass1 == cutClass2 && box1.width() == box1.length()) {
+    bool exactlyAligned = false;
+    if (box2.left() == box1.left() && box2.right() == box1.right()
+        && !dbRule->isHorizontal())
+      exactlyAligned = true;
+    else if (box2.bottom() == box1.bottom() && box2.top() == box1.top()
+             && !dbRule->isVertical())
+      exactlyAligned = true;
+
+    auto exAlSpc = dbRule->getExactAlignedSpacing(cutClass1);
+    if (exactlyAligned && exAlSpc != -1) {
+      reqDistSquare = (frSquaredDistance) exAlSpc * exAlSpc;
+      if (distSquare < reqDistSquare) {
+        return true;
+      }
+    }
+  }
+  if (prl > reqPrl)
+    reqDistSquare
+        = dbRule->getSpacing(cutClass1,
+                             isSide1,
+                             cutClass2,
+                             isSide2,
+                             odb::dbTechLayerCutSpacingTableDefRule::SECOND);
+  else
+    reqDistSquare
+        = dbRule->getSpacing(cutClass1,
+                             isSide1,
+                             cutClass2,
+                             isSide2,
+                             odb::dbTechLayerCutSpacingTableDefRule::FIRST);
+
+  if (dbRule->isCenterToCenter(cutClass1, cutClass2))
+    currDistSquare = c2cSquare;
+  else if (dbRule->isCenterAndEdge(cutClass1, cutClass2)
+           && (frCoord) reqDistSquare
+                  == dbRule->getSpacing(
+                      cutClass1,
+                      isSide1,
+                      cutClass2,
+                      isSide2,
+                      odb::dbTechLayerCutSpacingTableDefRule::MAX))
+    currDistSquare = c2cSquare;
+  else
+    currDistSquare = distSquare;
+
+  reqDistSquare *= reqDistSquare;
+  if (currDistSquare < reqDistSquare)
+    return true;
+  return false;
+}
+
 /*inline*/ void FlexDRWorker::modCutSpacingCost(const frBox& box,
                                                 frMIdx z,
                                                 int type,
                                                 bool isBlockage)
 {
   auto lNum = gridGraph_.getLayerNum(z) + 1;
-  if (!getTech()->getLayer(lNum)->hasCutSpacing()) {
+  auto cutLayer = getTech()->getLayer(lNum);
+  if (!cutLayer->hasCutSpacing()
+      && !cutLayer->hasLef58SameMetalCutSpcTblConstraint()
+      && !cutLayer->hasLef58SameNetCutSpcTblConstraint()
+      && !cutLayer->hasLef58DiffNetCutSpcTblConstraint()) {
     return;
   }
   // obj1 = curr obj
   // obj2 = other obj
   // default via dimension
-  frViaDef* viaDef = getTech()->getLayer(lNum)->getDefaultViaDef();
+  frViaDef* viaDef = cutLayer->getDefaultViaDef();
   frVia via(viaDef);
   frBox viaBox(0, 0, 0, 0);
   via.getCutBBox(viaBox);
 
+  frString cutClass1 = "";
+  frString cutClass2 = "";
+  int cutClassIdx1, cutClassIdx2;
+  cutClassIdx1 = cutLayer->getCutClassIdx(box.width(), box.length());
+  cutClassIdx2 = cutLayer->getCutClassIdx(viaBox.width(), viaBox.length());
+  if (cutClassIdx1 != -1)
+    cutClass1 = cutLayer->getCutClass(cutClassIdx1)->getName();
+  if (cutClassIdx2 != -1)
+    cutClass2 = cutLayer->getCutClass(cutClassIdx2)->getName();
+
   // spacing value needed
   frCoord bloatDist = 0;
-  for (auto con : getTech()->getLayer(lNum)->getCutSpacing()) {
+  for (auto con : cutLayer->getCutSpacing()) {
     bloatDist = max(bloatDist, con->getCutSpacing());
     if (con->getAdjacentCuts() != -1 && isBlockage) {
       bloatDist = max(bloatDist, con->getCutWithin());
     }
+  }
+  frLef58CutSpacingTableConstraint* lef58con = nullptr;
+  if (cutLayer->hasLef58SameMetalCutSpcTblConstraint())
+    lef58con = cutLayer->getLef58SameMetalCutSpcTblConstraint();
+  else if (cutLayer->hasLef58SameNetCutSpcTblConstraint())
+    lef58con = cutLayer->getLef58SameNetCutSpcTblConstraint();
+  else if (cutLayer->hasLef58DiffNetCutSpcTblConstraint())
+    lef58con = cutLayer->getLef58DiffNetCutSpcTblConstraint();
+
+  if (lef58con != nullptr) {
+    bloatDist = max(
+        bloatDist, lef58con->getODBRule()->getMaxSpacing(cutClass1, cutClass2));
+    if (cutClass1 == cutClass2)
+      bloatDist = max(
+          bloatDist, lef58con->getODBRule()->getExactAlignedSpacing(cutClass1));
   }
 
   FlexMazeIdx mIdx1;
@@ -1446,11 +1351,11 @@ void FlexDRWorker::modAdjCutSpacingCost_fixedObj(const frDesign* design,
   frCoord dx, dy, prl;
   frTransform xform;
   // frCoord reqDist = 0;
-  frCoord reqDistSquare = 0;
+  frSquaredDistance reqDistSquare = 0;
   frPoint boxCenter, tmpBxCenter;
   boxCenter.set((box.left() + box.right()) / 2, (box.bottom() + box.top()) / 2);
-  frCoord currDistSquare = 0;
-  bool hasViol = false;
+  frSquaredDistance currDistSquare = 0;
+  bool hasViol;
   for (int i = mIdx1.x(); i <= mIdx2.x(); i++) {
     for (int j = mIdx1.y(); j <= mIdx2.y(); j++) {
       for (auto& uFig : via.getViaDef()->getCutFigs()) {
@@ -1464,8 +1369,8 @@ void FlexDRWorker::modAdjCutSpacingCost_fixedObj(const frDesign* design,
         distSquare = box2boxDistSquareNew(box, tmpBx, dx, dy);
         c2cSquare = pt2ptDistSquare(boxCenter, tmpBxCenter);
         prl = max(-dx, -dy);
-        for (auto con : getTech()->getLayer(lNum)->getCutSpacing()) {
-          hasViol = false;
+        hasViol = false;
+        for (auto con : cutLayer->getCutSpacing()) {
           reqDistSquare = con->getCutSpacing();
           reqDistSquare *= con->getCutSpacing();
           currDistSquare = con->hasCenterToCenter() ? c2cSquare : distSquare;
@@ -1495,28 +1400,59 @@ void FlexDRWorker::modAdjCutSpacingCost_fixedObj(const frDesign* design,
                 && currDistSquare < reqDistSquare) {
               hasViol = true;
             }
-          } else {
-            if (currDistSquare < reqDistSquare) {
-              hasViol = true;
-            }
+          } else if (currDistSquare < reqDistSquare) {
+            hasViol = true;
           }
-          if (hasViol) {
-            switch (type) {
-              case 0:
-                gridGraph_.subRouteShapeCostVia(i, j, z);  // safe access
-                break;
-              case 1:
-                gridGraph_.addRouteShapeCostVia(i, j, z);  // safe access
-                break;
-              case 2:
-                gridGraph_.subFixedShapeCostVia(i, j, z);  // safe access
-                break;
-              case 3:
-                gridGraph_.addFixedShapeCostVia(i, j, z);  // safe access
-                break;
-              default:;
-            }
+          if (hasViol)
             break;
+        }
+        if (!hasViol && lef58con != nullptr) {
+          auto dbRule = lef58con->getODBRule();
+          bool checkVertical
+              = (tmpBx.bottom() > box.top()) || (tmpBx.top() < box.bottom());
+          bool checkHorizontal
+              = (tmpBx.left() > box.right()) || (tmpBx.right() < box.left());
+          if (!checkHorizontal && !checkVertical)
+            hasViol = true;
+          else {
+            if (checkVertical)
+              hasViol = checkLef58CutSpacingViol(box,
+                                                 tmpBx,
+                                                 cutClass1,
+                                                 cutClass2,
+                                                 prl,
+                                                 distSquare,
+                                                 c2cSquare,
+                                                 true,
+                                                 dbRule);
+            if (!hasViol && checkHorizontal)
+              hasViol = checkLef58CutSpacingViol(box,
+                                                 tmpBx,
+                                                 cutClass1,
+                                                 cutClass2,
+                                                 prl,
+                                                 distSquare,
+                                                 c2cSquare,
+                                                 false,
+                                                 dbRule);
+          }
+        }
+
+        if (hasViol) {
+          switch (type) {
+            case 0:
+              gridGraph_.subRouteShapeCostVia(i, j, z);  // safe access
+              break;
+            case 1:
+              gridGraph_.addRouteShapeCostVia(i, j, z);  // safe access
+              break;
+            case 2:
+              gridGraph_.subFixedShapeCostVia(i, j, z);  // safe access
+              break;
+            case 3:
+              gridGraph_.addFixedShapeCostVia(i, j, z);  // safe access
+              break;
+            default:;
           }
         }
       }
@@ -1631,6 +1567,159 @@ void FlexDRWorker::modInterLayerCutSpacingCost(const frBox& box,
   }
 }
 
+void FlexDRWorker::modLef58InterLayerCutSpacingCost(const frBox& box,
+                                                    frMIdx z,
+                                                    int type,
+                                                    bool isUpperVia,
+                                                    bool isBlockage)
+{
+  auto cutLayerNum1 = gridGraph_.getLayerNum(z) + 1;
+  auto cutLayerNum2 = isUpperVia ? cutLayerNum1 + 2 : cutLayerNum1 - 2;
+
+  auto z2 = isUpperVia ? z + 1 : z - 1;
+
+  frViaDef* viaDef = nullptr;
+  if (isUpperVia) {
+    viaDef = (cutLayerNum2 <= getTech()->getTopLayerNum())
+                 ? getTech()->getLayer(cutLayerNum2)->getDefaultViaDef()
+                 : nullptr;
+  } else {
+    viaDef = (cutLayerNum2 >= getTech()->getBottomLayerNum())
+                 ? getTech()->getLayer(cutLayerNum2)->getDefaultViaDef()
+                 : nullptr;
+  }
+  if (viaDef == nullptr)
+    return;
+
+  frLayer* higherLayer;
+  frLayer* lowerLayer;
+  if (isUpperVia) {
+    higherLayer = getTech()->getLayer(cutLayerNum2);
+    lowerLayer = getTech()->getLayer(cutLayerNum1);
+  } else {
+    lowerLayer = getTech()->getLayer(cutLayerNum2);
+    higherLayer = getTech()->getLayer(cutLayerNum1);
+  }
+  frLef58CutSpacingTableConstraint* con;
+  if (higherLayer->hasLef58DefaultInterCutSpcTblConstraint())
+    con = higherLayer->getLef58DefaultInterCutSpcTblConstraint();
+  else if (higherLayer->hasLef58SameNetInterCutSpcTblConstraint())
+    con = higherLayer->getLef58SameNetInterCutSpcTblConstraint();
+  else if (higherLayer->hasLef58SameMetalInterCutSpcTblConstraint())
+    con = higherLayer->getLef58SameMetalInterCutSpcTblConstraint();
+  else
+    return;
+
+  auto dbRule = con->getODBRule();
+  if (dbRule->getSecondLayer()->getName() != lowerLayer->getName())
+    return;
+  // obj1 = curr obj
+  // obj2 = other obj
+  // default via dimension
+  frVia via(viaDef);
+  frBox viaBox(0, 0, 0, 0);
+  via.getCutBBox(viaBox);
+
+  // spacing value needed
+
+  FlexMazeIdx mIdx1;
+  FlexMazeIdx mIdx2;
+  frString cutClass1 = "";
+  frString cutClass2 = "";
+  int cutClassIdx1, cutClassIdx2;
+  frCoord bloatDist = 0;
+  if (isUpperVia) {
+    cutClassIdx1 = higherLayer->getCutClassIdx(viaBox.width(), viaBox.length());
+    cutClassIdx2 = lowerLayer->getCutClassIdx(box.width(), box.length());
+  } else {
+    cutClassIdx1 = higherLayer->getCutClassIdx(box.width(), box.length());
+    cutClassIdx2 = lowerLayer->getCutClassIdx(viaBox.width(), viaBox.length());
+  }
+  if (cutClassIdx1 != -1)
+    cutClass1 = higherLayer->getCutClass(cutClassIdx1)->getName();
+  if (cutClassIdx2 != -1)
+    cutClass2 = lowerLayer->getCutClass(cutClassIdx2)->getName();
+
+  bloatDist = dbRule->getMaxSpacing(cutClass1, cutClass2);
+  if (bloatDist == 0)
+    return;
+  // assumes width always > 2
+  frBox bx(box.left() - bloatDist - (viaBox.right() - 0) + 1,
+           box.bottom() - bloatDist - (viaBox.top() - 0) + 1,
+           box.right() + bloatDist + (0 - viaBox.left()) - 1,
+           box.top() + bloatDist + (0 - viaBox.bottom()) - 1);
+  gridGraph_.getIdxBox(mIdx1, mIdx2, bx);
+
+  frPoint pt;
+  frBox tmpBx;
+  frSquaredDistance distSquare = 0;
+  frSquaredDistance c2cSquare = 0;
+  frCoord dx, dy, prl;
+  frTransform xform;
+  frPoint boxCenter, tmpBxCenter;
+  boxCenter.set((box.left() + box.right()) / 2, (box.bottom() + box.top()) / 2);
+  bool hasViol;
+  for (int i = mIdx1.x(); i <= mIdx2.x(); i++) {
+    for (int j = mIdx1.y(); j <= mIdx2.y(); j++) {
+      for (auto& uFig : via.getViaDef()->getCutFigs()) {
+        auto obj = static_cast<frRect*>(uFig.get());
+        gridGraph_.getPoint(pt, i, j);
+        xform.set(pt);
+        obj->getBBox(tmpBx);
+        tmpBx.transform(xform);
+        tmpBxCenter.set((tmpBx.left() + tmpBx.right()) / 2,
+                        (tmpBx.bottom() + tmpBx.top()) / 2);
+        distSquare = box2boxDistSquareNew(box, tmpBx, dx, dy);
+        c2cSquare = pt2ptDistSquare(boxCenter, tmpBxCenter);
+        prl = max(-dx, -dy);
+        hasViol = false;
+
+        bool checkVertical
+            = (tmpBx.bottom() > box.top()) || (tmpBx.top() < box.bottom());
+        bool checkHorizontal
+            = (tmpBx.left() > box.right()) || (tmpBx.right() < box.left());
+        if (checkVertical)
+          hasViol = checkLef58CutSpacingViol(box,
+                                             tmpBx,
+                                             cutClass1,
+                                             cutClass2,
+                                             prl,
+                                             distSquare,
+                                             c2cSquare,
+                                             true,
+                                             dbRule);
+        if (!hasViol && checkHorizontal)
+          hasViol = checkLef58CutSpacingViol(box,
+                                             tmpBx,
+                                             cutClass1,
+                                             cutClass2,
+                                             prl,
+                                             distSquare,
+                                             c2cSquare,
+                                             false,
+                                             dbRule);
+        if (hasViol) {
+          switch (type) {
+            case 0:
+              gridGraph_.subRouteShapeCostVia(i, j, z2);  // safe access
+              break;
+            case 1:
+              gridGraph_.addRouteShapeCostVia(i, j, z2);  // safe access
+              break;
+            case 2:
+              gridGraph_.subFixedShapeCostVia(i, j, z2);  // safe access
+              break;
+            case 3:
+              gridGraph_.addFixedShapeCostVia(i, j, z2);  // safe access
+              break;
+            default:;
+          }
+        }
+      }
+    }
+  }
+}
+
 void FlexDRWorker::addPathCost(drConnFig* connFig)
 {
   modPathCost(connFig, 1);
@@ -1707,6 +1796,8 @@ void FlexDRWorker::modPathCost(drConnFig* connFig, int type)
       modCutSpacingCost(box, bi.z(), type);
       modInterLayerCutSpacingCost(box, bi.z(), type, true);
       modInterLayerCutSpacingCost(box, bi.z(), type, false);
+      modLef58InterLayerCutSpacingCost(box, bi.z(), type, true);
+      modLef58InterLayerCutSpacingCost(box, bi.z(), type, false);
     }
   }
 }
@@ -1898,8 +1989,8 @@ void FlexDRWorker::route_queue_main(queue<RouteQueueEntry>& rerouteQueue)
         }
         logger_->error(DRT,
                        255,
-                       "Fatal error: Maze Route cannot find path of net {} in "
-                       "worker of routeBox {}",
+                       "Maze Route cannot find path of net {} in "
+                       "worker of routeBox {}.",
                        net->getFrNet()->getName(),
                        getRouteBox());
       }

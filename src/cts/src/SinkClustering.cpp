@@ -34,7 +34,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "SinkClustering.h"
-#include "pdr/pdrev.h"
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -128,7 +127,7 @@ unsigned SinkClustering::numVertex(unsigned x, unsigned y) const
     return 3;
   }
 
-  _logger->error(CTS, 58, "Invalid parameters in {}", __func__ );
+  _logger->error(CTS, 58, "Invalid parameters in {}.", __func__ );
 
   // avoid warn message
   return 4;
@@ -195,7 +194,7 @@ void SinkClustering::run(unsigned groupSize, float maxDiameter, int scaleFactor)
   findBestMatching(groupSize);
   if (_logger->debugCheck(CTS, "Stree", 1))
     writePlotFile(groupSize);
-  
+
 }
 
 void SinkClustering::writePlotFile()
@@ -467,8 +466,8 @@ double SinkClustering::getWireLength(std::vector<Point<double>> points)
     vecX.emplace_back(point.getX() * _options->getDbUnits());
     vecY.emplace_back(point.getY() * _options->getDbUnits());
   }
-  float alpha = 0.8;
-  stt::Tree pdTree = pdr::primDijkstraRevII(vecX, vecY, 0, alpha, _logger);
+  stt::SteinerTreeBuilder* sttBuilder = _options->getSttBuilder();
+  stt::Tree pdTree = sttBuilder->makeSteinerTree(vecX, vecY, 0);
   int wl = pdTree.length;
   return wl/double(_options->getDbUnits());
 }

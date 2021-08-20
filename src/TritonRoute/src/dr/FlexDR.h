@@ -29,6 +29,7 @@
 #ifndef _FR_FLEXDR_H_
 #define _FR_FLEXDR_H_
 
+#include <boost/polygon/polygon.hpp>
 #include <deque>
 #include <memory>
 
@@ -38,6 +39,8 @@
 #include "dr/FlexGridGraph.h"
 #include "dr/FlexWavefront.h"
 #include "frDesign.h"
+
+using Rectangle = boost::polygon::rectangle_data<int>;
 
 namespace odb {
 class dbDatabase;
@@ -340,9 +343,7 @@ class FlexDRWorker
 {
  public:
   // constructors
-  FlexDRWorker(const FlexDRViaData* via_data,
-               frDesign* design,
-               Logger* logger)
+  FlexDRWorker(const FlexDRViaData* via_data, frDesign* design, Logger* logger)
       : design_(design),
         logger_(logger),
         graphics_(nullptr),
@@ -468,6 +469,7 @@ class FlexDRWorker
       return nullptr;
     }
   }
+  frDesign* getDesign() { return design_; }
   const std::vector<frMarker>& getMarkers() const { return markers_; }
   std::vector<frMarker>& getMarkers() { return markers_; }
   const std::vector<frMarker>& getBestMarkers() const { return bestMarkers_; }
@@ -656,12 +658,15 @@ class FlexDRWorker
                         std::vector<frBlockObject*>& terms);
   void initNet_termGenAp_new(const frDesign* design, drPin* dPin);
   void initNet_addNet(std::unique_ptr<drNet> in);
-  void getTrackLocs(const frDesign* design,
-                    bool isHorzTracks,
+  void getTrackLocs(bool isHorzTracks,
                     frLayerNum currLayerNum,
                     frCoord low,
                     frCoord high,
                     std::set<frCoord>& trackLocs);
+  void getTrackLocsRestrictedRouting(frLayerNum startLayerNum,
+                                     Rectangle& pinRect,
+                                     std::set<frCoord>& xLocs,
+                                     std::set<frCoord>& yLocs);
   void initNet_boundary(drNet* net,
                         std::vector<std::unique_ptr<drConnFig>>& extObjs);
   void initNets_regionQuery();
@@ -737,11 +742,7 @@ class FlexDRWorker
   void subPathCost(drConnFig* connFig);
   void modPathCost(drConnFig* connFig, int type);
   // minSpc
-  void modMinSpacingCost(drNet* net,
-                         const frBox& box,
-                         frMIdx z,
-                         int type,
-                         bool isCurrPs);
+
   void modMinSpacingCostPlanar(const frBox& box,
                                frMIdx z,
                                int type,
@@ -796,6 +797,11 @@ class FlexDRWorker
                                    int type,
                                    bool isUpperVia,
                                    bool isBlockage = false);
+  void modLef58InterLayerCutSpacingCost(const frBox& box,
+                                        frMIdx z,
+                                        int type,
+                                        bool isUpperVia,
+                                        bool isBlockage = false);
   // adjCut
   void modAdjCutSpacingCost_fixedObj(const frDesign* design,
                                      const frBox& box,

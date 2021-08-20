@@ -29,8 +29,10 @@
 #ifndef _FR_BASE_TYPES_H_
 #define _FR_BASE_TYPES_H_
 
+#include <boost/geometry/strategies/strategies.hpp>
 #include <boost/geometry/geometries/box.hpp>
 #include <boost/geometry/geometries/point_xy.hpp>
+#include <boost/geometry/geometries/segment.hpp>
 #include <cstdint>
 #include <list>
 #include <map>
@@ -346,7 +348,8 @@ struct frDebugSettings
         gcellX(-1),
         gcellY(-1),
         iter(0),
-        paMarkers(false)
+        paMarkers(false),
+        paCombining(false)
   {
   }
 
@@ -363,6 +366,7 @@ struct frDebugSettings
   int gcellY;
   int iter;
   bool paMarkers;
+  bool paCombining;
 };
 }  // namespace fr
 

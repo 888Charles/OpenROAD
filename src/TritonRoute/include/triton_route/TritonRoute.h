@@ -47,6 +47,9 @@ class Logger;
 namespace gui {
 class Gui;
 }
+namespace stt {
+class SteinerTreeBuilder;
+}
 namespace triton_route {
 
 typedef struct {
@@ -56,6 +59,7 @@ typedef struct {
   const std::string& outputDrcFile;
   const std::string& outputCmapFile;
   const std::string& dbProcessNode;
+  bool enableViaGen;
   int drouteEndIter;
   int drouteViaInPinBottomLayerNum;
   int drouteViaInPinTopLayerNum;
@@ -71,7 +75,10 @@ class TritonRoute
  public:
   TritonRoute();
   ~TritonRoute();
-  void init(Tcl_Interp* tcl_interp, odb::dbDatabase* db, utl::Logger* logger);
+  void init(Tcl_Interp* tcl_interp,
+            odb::dbDatabase* db,
+            utl::Logger* logger,
+            stt::SteinerTreeBuilder* stt_builder);
 
   fr::frDesign* getDesign() const { return design_.get(); }
 
@@ -87,6 +94,7 @@ class TritonRoute
   void setDebugGCell(int x, int y);
   void setDebugIter(int iter);
   void setDebugPaMarkers(bool on = true);
+  void setDebugPaCombining(bool on = true);
   void reportConstraints();
 
   void readParams(const std::string& fileName);
@@ -97,6 +105,7 @@ class TritonRoute
   std::unique_ptr<fr::frDebugSettings> debug_;
   odb::dbDatabase* db_;
   utl::Logger* logger_;
+  stt::SteinerTreeBuilder* stt_builder_;
   int num_drvs_;
   gui::Gui* gui_;
 

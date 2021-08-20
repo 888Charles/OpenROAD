@@ -56,6 +56,7 @@ void detailed_route_cmd(const char* guideFile,
                         const char* outputDrcFile,
                         const char* outputCmapFile,
                         const char* dbProcessNode,
+                        bool enableViaGen,
                         int drouteEndIter,
                         int drouteViaInPinBottomLayerNum,
                         int drouteViaInPinTopLayerNum,
@@ -72,6 +73,7 @@ void detailed_route_cmd(const char* guideFile,
                     outputDrcFile,
                     outputCmapFile,
                     dbProcessNode,
+                    enableViaGen,
                     drouteEndIter,
                     drouteViaInPinBottomLayerNum,
                     drouteViaInPinTopLayerNum,
@@ -104,7 +106,8 @@ set_detailed_route_debug_cmd(const char* net_name,
                              bool maze,
                              int gcell_x, int gcell_y,
                              int iter,
-                             bool pa_markers)
+                             bool pa_markers,
+                             bool pa_combining)
 {
   auto* router = ord::OpenRoad::openRoad()->getTritonRoute();
   router->setDebugNetName(net_name);
@@ -117,6 +120,7 @@ set_detailed_route_debug_cmd(const char* net_name,
   }
   router->setDebugIter(iter);
   router->setDebugPaMarkers(pa_markers);
+  router->setDebugPaCombining(pa_combining);
 }
 
 %} // inline

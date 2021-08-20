@@ -692,7 +692,7 @@ bool FlexPA::prepPoint_pin_checkPoint_planar_ep(
       y += stepSize;
       break;
     default:
-      logger_->error(DRT, 70, "unexpected direction in getPlanarEP");
+      logger_->error(DRT, 70, "Unexpected direction in getPlanarEP.");
   }
   ep.set(x, y);
   gtl::point_data<frCoord> pt(x, y);
@@ -1124,7 +1124,7 @@ bool FlexPA::prepPoint_pin_helper(
     // write to pa
     auto it = unique2paidx_.find(instTerm->getInst());
     if (it == unique2paidx_.end()) {
-      logger_->error(DRT, 72, "prepPoint_pin_helper unique2paidx not found");
+      logger_->error(DRT, 72, "prepPoint_pin_helper unique2paidx not found.");
     } else {
       for (auto& ap : aps) {
         pin->getPinAccess(it->second)->addAccessPoint(std::move(ap));
@@ -1207,11 +1207,11 @@ void FlexPA::prepPoint_pin(frPin* pin, frInstTerm* instTerm)
     if (instTerm) {
       logger_->error(DRT,
                      73,
-                     "no ap for {}/{}",
+                     "No ap for {}/{}.",
                      instTerm->getInst()->getName(),
                      instTerm->getTerm()->getName());
     } else {
-      logger_->error(DRT, 74, "no ap for PIN/{}", pin->getTerm()->getName());
+      logger_->error(DRT, 74, "No ap for PIN/{}.", pin->getTerm()->getName());
     }
     if (isStdCellPin) {
       stdCellPinNoApCnt_++;
@@ -1280,11 +1280,11 @@ void FlexPA::prepPoint()
         if (VERBOSE > 0) {
           if (cnt < 1000) {
             if (cnt % 100 == 0) {
-              logger_->info(DRT, 76, "  complete {} pins", cnt);
+              logger_->info(DRT, 76, "  Complete {} pins.", cnt);
             }
           } else {
             if (cnt % 1000 == 0) {
-              logger_->info(DRT, 77, "  complete {} pins", cnt);
+              logger_->info(DRT, 77, "  Complete {} pins.", cnt);
             }
           }
         }
@@ -1313,7 +1313,7 @@ void FlexPA::prepPoint()
   }
 
   if (VERBOSE > 0) {
-    logger_->info(DRT, 78, "  complete {} pins", cnt);
+    logger_->info(DRT, 78, "  Complete {} pins.", cnt);
   }
 }
 
@@ -1348,18 +1348,18 @@ void FlexPA::prepPattern()
       if (VERBOSE > 0) {
         if (cnt < 1000) {
           if (cnt % 100 == 0) {
-            logger_->info(DRT, 79, "  complete {} unique inst patterns", cnt);
+            logger_->info(DRT, 79, "  Complete {} unique inst patterns.", cnt);
           }
         } else {
           if (cnt % 1000 == 0) {
-            logger_->info(DRT, 80, "  complete {} unique inst patterns", cnt);
+            logger_->info(DRT, 80, "  Complete {} unique inst patterns.", cnt);
           }
         }
       }
     }
   }
   if (VERBOSE > 0) {
-    logger_->info(DRT, 81, "  complete {} unique inst patterns", cnt);
+    logger_->info(DRT, 81, "  Complete {} unique inst patterns.", cnt);
   }
 
   // prep pattern for each row
@@ -1422,18 +1422,18 @@ void FlexPA::prepPattern()
       if (VERBOSE > 0) {
         if (cnt < 10000) {
           if (cnt % 1000 == 0) {
-            logger_->info(DRT, 82, "  complete {} groups", cnt);
+            logger_->info(DRT, 82, "  Complete {} groups.", cnt);
           }
         } else {
           if (cnt % 10000 == 0) {
-            logger_->info(DRT, 83, "  complete {} groups", cnt);
+            logger_->info(DRT, 83, "  Complete {} groups.", cnt);
           }
         }
       }
     }
   }
   if (VERBOSE > 0) {
-    logger_->info(DRT, 84, "  complete {} groups", cnt);
+    logger_->info(DRT, 84, "  Complete {} groups.", cnt);
   }
 }
 
@@ -1471,10 +1471,7 @@ void FlexPA::genInstPattern(std::vector<frInst*>& insts)
     return;
   }
 
-  // TODO: change to a global constant
-  maxAccessPatternSize_ = 5;
-
-  int numNode = (insts.size() + 2) * maxAccessPatternSize_;
+  int numNode = (insts.size() + 2) * ACCESS_PATTERN_END_ITERATION_NUM;
 
   std::vector<FlexDPNode> nodes(numNode);
 
@@ -1488,8 +1485,8 @@ void FlexPA::genInstPattern_init(std::vector<FlexDPNode>& nodes,
                                  const std::vector<frInst*>& insts)
 {
   // init virutal nodes
-  int startNodeIdx = getFlatIdx(-1, 0, maxAccessPatternSize_);
-  int endNodeIdx = getFlatIdx(insts.size(), 0, maxAccessPatternSize_);
+  int startNodeIdx = getFlatIdx(-1, 0, ACCESS_PATTERN_END_ITERATION_NUM);
+  int endNodeIdx = getFlatIdx(insts.size(), 0, ACCESS_PATTERN_END_ITERATION_NUM);
   nodes[startNodeIdx].setNodeCost(0);
   nodes[startNodeIdx].setPathCost(0);
   nodes[endNodeIdx].setNodeCost(0);
@@ -1501,7 +1498,7 @@ void FlexPA::genInstPattern_init(std::vector<FlexDPNode>& nodes,
     auto uniqueInstIdx = unique2Idx_[uniqueInst];
     auto& instPatterns = uniqueInstPatterns_[uniqueInstIdx];
     for (int idx2 = 0; idx2 < (int) instPatterns.size(); idx2++) {
-      int nodeIdx = getFlatIdx(idx1, idx2, maxAccessPatternSize_);
+      int nodeIdx = getFlatIdx(idx1, idx2, ACCESS_PATTERN_END_ITERATION_NUM);
       auto accessPattern = instPatterns[idx2].get();
       nodes[nodeIdx].setNodeCost(accessPattern->getCost());
     }
@@ -1513,15 +1510,15 @@ void FlexPA::genInstPattern_perform(std::vector<FlexDPNode>& nodes,
 {
   for (int currIdx1 = 0; currIdx1 <= (int) insts.size(); currIdx1++) {
     bool isSet = false;
-    for (int currIdx2 = 0; currIdx2 < maxAccessPatternSize_; currIdx2++) {
-      auto currNodeIdx = getFlatIdx(currIdx1, currIdx2, maxAccessPatternSize_);
+    for (int currIdx2 = 0; currIdx2 < ACCESS_PATTERN_END_ITERATION_NUM; currIdx2++) {
+      auto currNodeIdx = getFlatIdx(currIdx1, currIdx2, ACCESS_PATTERN_END_ITERATION_NUM);
       auto& currNode = nodes[currNodeIdx];
       if (currNode.getNodeCost() == std::numeric_limits<int>::max()) {
         continue;
       }
       int prevIdx1 = currIdx1 - 1;
-      for (int prevIdx2 = 0; prevIdx2 < maxAccessPatternSize_; prevIdx2++) {
-        int prevNodeIdx = getFlatIdx(prevIdx1, prevIdx2, maxAccessPatternSize_);
+      for (int prevIdx2 = 0; prevIdx2 < ACCESS_PATTERN_END_ITERATION_NUM; prevIdx2++) {
+        int prevNodeIdx = getFlatIdx(prevIdx1, prevIdx2, ACCESS_PATTERN_END_ITERATION_NUM);
         auto& prevNode = nodes[prevNodeIdx];
         if (prevNode.getPathCost() == std::numeric_limits<int>::max()) {
           continue;
@@ -1547,7 +1544,7 @@ void FlexPA::genInstPattern_commit(std::vector<FlexDPNode>& nodes,
 {
   // bool isDebugMode = true;
   bool isDebugMode = false;
-  int currNodeIdx = getFlatIdx(insts.size(), 0, maxAccessPatternSize_);
+  int currNodeIdx = getFlatIdx(insts.size(), 0, ACCESS_PATTERN_END_ITERATION_NUM);
   auto currNode = &(nodes[currNodeIdx]);
   int instCnt = insts.size();
   std::vector<int> instAccessPatternIdx(insts.size(), -1);
@@ -1555,7 +1552,7 @@ void FlexPA::genInstPattern_commit(std::vector<FlexDPNode>& nodes,
     // non-virtual node
     if (instCnt != (int) insts.size()) {
       int currIdx1, currIdx2;
-      getNestedIdx(currNodeIdx, currIdx1, currIdx2, maxAccessPatternSize_);
+      getNestedIdx(currNodeIdx, currIdx1, currIdx2, ACCESS_PATTERN_END_ITERATION_NUM);
       instAccessPatternIdx[currIdx1] = currIdx2;
 
       auto& inst = insts[currIdx1];
@@ -1588,7 +1585,7 @@ void FlexPA::genInstPattern_commit(std::vector<FlexDPNode>& nodes,
   }
 
   if (instCnt != -1) {
-    logger_->error(DRT, 85, "valid access pattern combination not found.");
+    logger_->error(DRT, 85, "Valid access pattern combination not found.");
   }
 
   // for (int i = 0; i < (int)instAccessPatternIdx.size(); i++) {
@@ -1604,7 +1601,7 @@ void FlexPA::genInstPattern_commit(std::vector<FlexDPNode>& nodes,
 void FlexPA::genInstPattern_print(std::vector<FlexDPNode>& nodes,
                                   const std::vector<frInst*>& insts)
 {
-  int currNodeIdx = getFlatIdx(insts.size(), 0, maxAccessPatternSize_);
+  int currNodeIdx = getFlatIdx(insts.size(), 0, ACCESS_PATTERN_END_ITERATION_NUM);
   auto currNode = &(nodes[currNodeIdx]);
   int instCnt = insts.size();
   std::vector<int> instAccessPatternIdx(insts.size(), -1);
@@ -1622,7 +1619,7 @@ void FlexPA::genInstPattern_print(std::vector<FlexDPNode>& nodes,
     // non-virtual node
     if (instCnt != (int) insts.size()) {
       int currIdx1, currIdx2;
-      getNestedIdx(currNodeIdx, currIdx1, currIdx2, maxAccessPatternSize_);
+      getNestedIdx(currNodeIdx, currIdx1, currIdx2, ACCESS_PATTERN_END_ITERATION_NUM);
       instAccessPatternIdx[currIdx1] = currIdx2;
 
       // print debug information
@@ -1665,7 +1662,8 @@ void FlexPA::genInstPattern_print(std::vector<FlexDPNode>& nodes,
   cout << flush;
 
   if (instCnt != -1) {
-    cout << "Error: valid access pattern combination not found\n";
+    logger_->error(
+        DRT, 276, "Valid access pattern combination not found.");
   }
 }
 
@@ -1676,8 +1674,8 @@ int FlexPA::getEdgeCost(int prevNodeIdx,
 {
   int edgeCost = 0;
   int prevIdx1, prevIdx2, currIdx1, currIdx2;
-  getNestedIdx(prevNodeIdx, prevIdx1, prevIdx2, maxAccessPatternSize_);
-  getNestedIdx(currNodeIdx, currIdx1, currIdx2, maxAccessPatternSize_);
+  getNestedIdx(prevNodeIdx, prevIdx1, prevIdx2, ACCESS_PATTERN_END_ITERATION_NUM);
+  getNestedIdx(currNodeIdx, currIdx1, currIdx2, ACCESS_PATTERN_END_ITERATION_NUM);
   if (prevIdx1 == -1 || currIdx1 == (int) insts.size()) {
     return edgeCost;
   }
@@ -1828,7 +1826,7 @@ void FlexPA::prepPattern_inst(frInst* inst, int currUniqueInstIdx)
             std::make_pair((sumXCoord + 0.0 * sumYCoord) / cnt,
                            std::make_pair(pin.get(), instTerm.get())));
       } else {
-        logger_->error(DRT, 86, "pin does not have access point.");
+        logger_->error(DRT, 86, "Pin does not have an access point.");
       }
     }
   }
@@ -1951,7 +1949,7 @@ void FlexPA::genPatterns(
     auto inst = pins[0].second->getInst();
     logger_->warn(DRT,
                   87,
-                  "no valid pattern for unique instance {}, refBlock is {}",
+                  "No valid pattern for unique instance {}, refBlock is {}.",
                   inst->getName(),
                   inst->getRefBlock()->getName());
     // int paIdx = unique2paidx[pins[0].second->getInst()];
@@ -2083,6 +2081,9 @@ bool FlexPA::genPatterns_gc(frBlockObject* targetObj,
         owners->insert(src);
       }
     }
+  }
+  if (graphics_) {
+    graphics_->setObjsAndMakers(objs, gcWorker.getMarkers());
   }
   return sol;
 }
@@ -2281,7 +2282,7 @@ bool FlexPA::genPatterns_commit(
   }
 
   if (pinCnt != -1) {
-    logger_->error(DRT, 90, "valid access pattern not found.");
+    logger_->error(DRT, 90, "Valid access pattern not found.");
   }
 
   // add to pattern set if unique
@@ -2338,7 +2339,7 @@ bool FlexPA::genPatterns_commit(
       }
       for (auto& pin : instTerm->getTerm()->getPins()) {
         if (pin2AP.find(pin.get()) == pin2AP.end()) {
-          logger_->error(DRT, 91, "pin does not have valid ap.");
+          logger_->error(DRT, 91, "Pin does not have valid ap.");
         } else {
           auto& ap = pin2AP[pin.get()];
           ap->getPoint(tmpPt);
@@ -2446,7 +2447,8 @@ void FlexPA::genPatterns_print_debug(
   }
   cout << endl;
   if (pinCnt != -1) {
-    cout << "Error: valid access pattern not found\n";
+    logger_->error(
+        DRT, 277, "Valid access pattern not found.");
   }
 }
 
@@ -2493,7 +2495,8 @@ void FlexPA::genPatterns_print(
     pinCnt--;
   }
   if (pinCnt != -1) {
-    cout << "Error: valid access pattern not found\n";
+    logger_->error(
+        DRT, 278, "Valid access pattern not found.");
   }
 }
 

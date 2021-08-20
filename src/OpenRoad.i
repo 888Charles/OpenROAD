@@ -35,10 +35,10 @@
 
 %{
 
-#include "opendb/db.h"
-#include "opendb/lefin.h"
-#include "opendb/defin.h"
-#include "opendb/defout.h"
+#include "odb/db.h"
+#include "odb/lefin.h"
+#include "odb/defin.h"
+#include "odb/defout.h"
 #include "sta/Report.hh"
 #include "sta/Network.hh"
 #include "db_sta/dbSta.hh"
@@ -200,6 +200,13 @@ getPdnGen()
 {
   OpenRoad *openroad = getOpenRoad();
   return openroad->getPdnGen();
+}
+
+stt::SteinerTreeBuilder*
+getSteinerTreeBuilder()
+{
+  OpenRoad *openroad = getOpenRoad();
+  return openroad->getSteinerTreeBuilder();
 }
 
 } // namespace ord
